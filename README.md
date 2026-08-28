@@ -1,6 +1,6 @@
 # ROVER — Visual Perception & Traversability System for UGVs
 
-ROVER is a visual perception and traversability estimation subsystem designed for Unmanned Ground Vehicles (UGVs) operating in complex, off-road environments. 
+ROVER is a visual perception and traversability estimation subsystem designed for Unmanned Ground Vehicles (UGVs) operating in complex, off-road environments.
 
 ---
 
@@ -11,7 +11,6 @@ UGVs must navigate unpredictable paths, rocks, logs, and vegetation without rely
 ![ROVER V3 Off-Road Segmentation Hero Comparison](assets/segmentation_comparison_1.png)
 
 *The four-panel comparison above demonstrates the original image, ground truth labels, predicted segmentation classes, and overlaid alpha blend produced by the ROVER V3 perception head on a typical off-road scene.*
-
 
 ### Purpose and Scope
 ROVER is a **perception and traversability reasoning module**. It is not a complete autonomous vehicle stack. It processes camera data to recommend safe paths, which can then be ingested by local vehicle motion controllers and path executors.
@@ -50,7 +49,7 @@ ROVER translates raw camera pixels into a driving status using a multi-stage sof
 
 ## 4. Why Semantic Segmentation?
 
-Traditional computer vision uses bounding boxes to detect objects. While bounding boxes tell a vehicle *where* an obstacle is, they do not define the exact boundaries of the traversable ground. 
+Traditional computer vision uses bounding boxes to detect objects. While bounding boxes tell a vehicle *where* an obstacle is, they do not define the exact boundaries of the traversable ground.
 
 ```
 Bounding Box Detection (Object detection)  ──► "There is a rock somewhere in this rectangle."
@@ -119,24 +118,73 @@ $$\text{Total Loss} = 0.5 \times \text{Weighted Cross Entropy} + 0.5 \times \tex
 * **Weighted Cross Entropy**: Applies scaling factors (inverse frequency weights) to penalize errors on rare classes more heavily.
 * **Weighted Focal Loss ($\gamma = 2.0$)**: Adds a modulating factor $(1 - p_t)^\gamma$ to standard cross entropy. As the model's confidence in a pixel increases, the loss contribution drops. This prevents easy, common pixels (like Sky) from dominating the gradients, forcing the model to focus on learning difficult boundaries (like Logs and Ground Clutter).
 
+#### Why combine them?
+* **Weighted Cross Entropy** ensures rare but important classes such as Logs and Rocks receive sufficient training emphasis.
+* **Focal Loss** reduces the influence of easy, already-correct pixels and focuses learning on difficult pixels and boundaries.
+* Combining both gives the segmentation head pressure to learn rare hazards without completely ignoring the dominant terrain classes.
+
 ---
 
-## 7. Dataset Details
+## 7. Key Technical Terms
 
-The system was trained on the **Duality off-road dataset**, which consists of synthetic sensor imagery from off-road environments. 
-* **Benefits**: Provides pixel-perfect ground truth labels for complex categories like Ground Clutter and Logs, which are notoriously difficult and time-consuming to label manually.
+Understanding the underlying technology helps clarify how ROVER performs visual scene layout reasoning:
+
+### DINOv2
+A pretrained Vision Transformer model trained by Meta using self-supervised learning. In this project, it is used as a frozen feature extractor that converts raw camera pixels into dense, high-dimensional visual feature vectors.
+
+### Vision Transformer (ViT)
+An alternative neural network architecture to conventional Convolutional Neural Networks (CNNs). Instead of scanning the entire image with sliding convolutional kernels, a ViT splits the image into a sequence of small patches and uses self-attention mechanisms to learn global context.
+
+### Patch Token
+Each individual image patch processed by a ViT. In ROVER, the input is divided into $14 \times 14$ pixel patches, forming a $19 \times 34$ grid of 646 patch tokens. Each token represents local spatial information as a 384-dimensional vector.
+
+### Segmentation Head
+A lightweight convolutional decoder trained specifically to map the high-dimensional feature grids back into spatial probability masks matching the original image dimensions.
+
+### Logit
+The raw, unnormalized prediction scores output by the final classification layer. These numerical values are converted into probabilities ($0.0$ to $1.0$) using the softmax function.
+
+### Semantic Segmentation
+The process of assigning a semantic category label to every pixel in an image, allowing fine-grained classification of shapes, trails, and complex background boundaries.
+
+### Intersection over Union (IoU)
+An evaluation metric calculating the overlap percentage between the predicted region and the actual ground-truth region.
+
+### Mean IoU (mIoU)
+The average of the IoU scores computed across all semantic classes, ensuring that large, common classes do not hide poor detection performance on smaller, rare hazard classes.
+
+### Dice Score
+A spatial overlap metric measuring prediction and ground truth agreement. It is mathematically equivalent to the F1 score.
+
+### Focal Loss
+An improvement over standard Cross Entropy that down-weights easy, well-classified background pixels, forcing the network's gradient updates to prioritize learning difficult, ambiguous boundaries.
+
+### Traversability
+An engineering score defining how safe or physically drivable a specific region of ground is for a ground vehicle, considering terrain type, slope, and obstacle buffers.
+
+### Morphological Dilation
+A computer vision operation that expands the boundaries of a binary mask. ROVER uses dilation to pad hard obstacle contours, creating safe safety zones.
+
+### Safe Corridor
+The selected driving path column in front of the vehicle that maximizes terrain drivability scores while maintaining zero occupancy of hard hazard regions.
+
+---
+
+## 8. Dataset Details
+
+The system was trained on the **Duality off-road dataset**, which consists of synthetic off-road sensor imagery.
+* **Benefits**: Provides pixel-perfect ground truth labels for complex categories like Ground Clutter and Logs, which are difficult and time-consuming to label manually.
 * **Generalization**: Synthetic training allows the model to learn structural and geometric cues. However, a synthetic-to-real domain gap remains, meaning performance can vary under real-world lighting, dust, and weather conditions.
 
 ---
 
-## 8. Semantic Classes & Traversability Mapping
+## 9. Semantic Classes & Traversability Mapping
 
 Each of the 10 predicted classes is mapped to a physical drivability category:
 
 ![ROVER V3 Sloped Ground Segmentation Comparison](assets/segmentation_comparison_2.png)
 
 *The sloped path comparison above illustrates prediction consistency when handling tilted camera axes, successfully isolating dry grass and trees.*
-
 
 | Class ID | Class Name | Traversability Mapping | Drivability Score | Description |
 | :---: | :--- | :--- | :---: | :--- |
@@ -153,23 +201,26 @@ Each of the 10 predicted classes is mapped to a physical drivability category:
 
 ---
 
-## 9. Evaluation Metrics
+## 10. Evaluation Metrics
 
 To evaluate model accuracy, ROVER V3 uses standard semantic segmentation metrics:
 
 ### Intersection over Union (IoU)
 IoU measures the overlap between the predicted region and the ground-truth region:
 $$\text{IoU} = \frac{\text{Prediction} \cap \text{Ground Truth}}{\text{Prediction} \cup \text{Ground Truth}}$$
-* If the predicted shape matches the ground truth perfectly, IoU is 1.0. If there is no overlap, IoU is 0.0.
-* **mIoU** is the mean IoU computed across all 10 classes. This prevents common classes from hiding poor performance on smaller classes.
+* Think of IoU as asking: how much does the predicted region overlap the actual region? If they match perfectly, the score is 1.0; if they do not overlap, it approaches 0.0.
 
 ### Dice Score (F1-like metric)
 The Dice coefficient measures spatial overlap, focusing on the ratio of correct predictions to the total area:
 $$\text{Dice} = \frac{2 \times |\text{Prediction} \cap \text{Ground Truth}|}{|\text{Prediction}| + |\text{Ground Truth}|}$$
+* Dice also measures overlap, but weights the shared region differently and is closely related to the F1 score.
 
 ### Pixel Accuracy
-Calculates the percentage of correctly classified pixels across the entire image. 
-* *Note: If 80% of an image is Sky and Landscape, a model that classifies everything as Landscape can achieve 80% accuracy while failing completely at detecting obstacles. Therefore, IoU is the primary metric used to evaluate performance.*
+Calculates the percentage of correctly classified pixels across the entire image.
+* Accuracy measures how many individual pixels received the correct class.
+
+> [!IMPORTANT]
+> **mIoU** is the primary segmentation metric used here because pixel accuracy can look high even when small but important hazard classes (such as Logs or Rocks) are poorly detected.
 
 ### Verified Validation Results (ROVER V3)
 * **Validation mIoU**: 51.90%
@@ -192,7 +243,7 @@ The relatively lower IoU of Logs (0.257) and Rocks (0.332) indicates that these 
 
 ---
 
-## 10. Why Segmentation Alone Is Not Enough
+## 11. Why Segmentation Alone Is Not Enough
 
 A segmentation model answers the question: *"What does this pixel look like?"*
 ROVER's refinement layer answers the question: *"Is this pixel actually an obstacle?"*
@@ -201,7 +252,7 @@ ROVER's refinement layer answers the question: *"Is this pixel actually an obsta
 
 ---
 
-## 11. Runtime Hazard Refinement
+## 12. Runtime Hazard Refinement
 
 The segmentation network can confuse visually similar off-road elements (such as dirt vs. rocks, or logs vs. soil). At runtime, ROVER applies additional geometric and visual color filters to verify hard hazards before they are sent to the path planner. These heuristics run on the CPU during the post-processing phase. The neural network weights remain unchanged.
 
@@ -220,7 +271,7 @@ $$\text{rock\_confidence} = 0.50 \times \text{v3\_rock\_prob} + 0.25 \times \tex
 
 ---
 
-## 12. Spatial Safety Buffers
+## 13. Spatial Safety Buffers
 
 UGVs should not drive immediately beside detected rocks or logs to avoid side collisions. ROVER creates a spatial buffer around confirmed Hard Hazards.
 * **Morphological Dilation**: The hard hazard mask is expanded using a $15 \times 15$ elliptical kernel (`cv2.dilate`). This creates a safety boundary that follows the object's contours.
@@ -228,7 +279,7 @@ UGVs should not drive immediately beside detected rocks or logs to avoid side co
 
 ---
 
-## 13. Safe Corridor Estimation
+## 14. Safe Corridor Estimation
 
 The path planner estimates a recommended corridor in the lower 45% of the frame (representing the ground plane immediately in front of the vehicle):
 1. **Lanes**: Scans horizontal windows of width 90 pixels across the image.
@@ -243,7 +294,7 @@ The path planner estimates a recommended corridor in the lower 45% of the frame 
 
 ---
 
-## 14. ROVER Telemetry Cockpit
+## 15. ROVER Telemetry Cockpit
 
 The web interface serves as a diagnostic console:
 
@@ -254,7 +305,7 @@ The web interface serves as a diagnostic console:
 
 ---
 
-## 15. Demo Verification Scenarios
+## 16. Demo Verification Scenarios
 
 The system was evaluated against three distinct off-road path scenarios:
 
@@ -281,14 +332,14 @@ The system was evaluated against three distinct off-road path scenarios:
 
 ---
 
-## 16. Technology Stack
+## 17. Technology Stack
 
 * **Backend**: Python, PyTorch, DINOv2, FastAPI, OpenCV, torchvision
 * **Frontend**: HTML, CSS, JavaScript
 
 ---
 
-## 17. Repository Structure
+## 18. Repository Structure
 
 ```
 ROVER-SIH26126/
@@ -313,14 +364,14 @@ ROVER-SIH26126/
 
 ![ROVER V3 Uphill Rocky Segmentation Comparison](assets/segmentation_comparison_3.png)
 
-* [rover_v3.ipynb](file:///c:/Users/apank/Documents/ROVER-SIH26126/rover_v3.ipynb): Training notebook containing frozen DINOv2 setup, combined Focal Loss code, and learning curves.
-* [best_rover_v3_segmentation_head.pth](file:///c:/Users/apank/Documents/ROVER-SIH26126/best_rover_v3_segmentation_head.pth): Fine-tuned classifier weights.
-* [api.py](file:///c:/Users/apank/Documents/ROVER-SIH26126/api.py): FastAPI server containing the post-processing filters, buffer logic, and lane planner.
-* [diagnostic_interface.html](file:///c:/Users/apank/Documents/ROVER-SIH26126/diagnostic_interface.html): Web client for uploading images, rendering overlays, and displaying telemetry.
+* [rover_v3.ipynb](rover_v3.ipynb): Training notebook containing frozen DINOv2 setup, combined Focal Loss code, and learning curves.
+* [best_rover_v3_segmentation_head.pth](best_rover_v3_segmentation_head.pth): Fine-tuned classifier weights.
+* [api.py](api.py): FastAPI server containing the post-processing filters, buffer logic, and lane planner.
+* [diagnostic_interface.html](diagnostic_interface.html): Web client for uploading images, rendering overlays, and displaying telemetry.
 
 ---
 
-## 18. Getting Started
+## 19. Getting Started
 
 ### Prerequisites
 Ensure Python 3.9+ is installed on your system.
@@ -364,17 +415,17 @@ Ensure Python 3.9+ is installed on your system.
 
 ---
 
-## 19. Limitations
+## 20. Limitations
 
-While ROVER runs in under 400ms on edge hardware, users must consider the following design limitations:
-1. **Camera-Only Input**: The system lacks radar, LiDAR, or depth integration. Traversability scores assume flat ground.
-2. **Synthetic Training Bias**: The model was trained on synthetic datasets. Real-world outdoor conditions (dust, rain, or glare) will introduce domain-shift errors.
-3. **No Temporal Consistency**: Predictions are evaluated frame-by-frame. Obstacles are not tracked between consecutive frames.
-4. **Subsystem Design**: The module does not calculate steering commands or track vehicle odometry. It must be paired with low-level motion planning and control systems.
+* **Camera-Only Input**: The system lacks radar, LiDAR, or depth integration. Traversability scores assume flat ground.
+* **Synthetic Training Bias**: The model was trained on synthetic datasets. Real-world outdoor conditions (dust, rain, or glare) will introduce domain-shift errors.
+* **No Temporal Consistency**: Predictions are evaluated frame-by-frame. Obstacles are not tracked between consecutive frames.
+* **Inference Latency**: Current development-time inference measurements are approximately 400–560 ms depending on the scenario and runtime conditions.
+* **Subsystem Design**: The module does not calculate steering commands or track vehicle odometry. It must be paired with low-level motion planning and control systems.
 
 ---
 
-## 20. Project Scope
+## 21. Project Scope
 
 A summary of ROVER's features:
 
