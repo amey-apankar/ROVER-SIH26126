@@ -8,9 +8,10 @@ ROVER is a visual perception and traversability estimation subsystem designed fo
 
 UGVs must navigate unpredictable paths, rocks, logs, and vegetation without relying on GPS. ROVER solves the vision-based scene interpretation challenge. The system takes a single camera image as input, extracts rich semantic features, estimates local ground traversability, and recommends a safe driving corridor.
 
-```
- Camera Image ──► AI Terrain Segmentation ──► Hazard Refinement ──► Traversability Mapping ──► Corridor Recommendation
-```
+![ROVER V3 Off-Road Segmentation Hero Comparison](assets/segmentation_comparison_1.png)
+
+*The four-panel comparison above demonstrates the original image, ground truth labels, predicted segmentation classes, and overlaid alpha blend produced by the ROVER V3 perception head on a typical off-road scene.*
+
 
 ### Purpose and Scope
 ROVER is a **perception and traversability reasoning module**. It is not a complete autonomous vehicle stack. It processes camera data to recommend safe paths, which can then be ingested by local vehicle motion controllers and path executors.
@@ -131,6 +132,11 @@ The system was trained on the **Duality off-road dataset**, which consists of sy
 ## 8. Semantic Classes & Traversability Mapping
 
 Each of the 10 predicted classes is mapped to a physical drivability category:
+
+![ROVER V3 Sloped Ground Segmentation Comparison](assets/segmentation_comparison_2.png)
+
+*The sloped path comparison above illustrates prediction consistency when handling tilted camera axes, successfully isolating dry grass and trees.*
+
 
 | Class ID | Class Name | Traversability Mapping | Drivability Score | Description |
 | :---: | :--- | :--- | :---: | :--- |
@@ -287,6 +293,11 @@ The system was evaluated against three distinct off-road path scenarios:
 ```
 ROVER-SIH26126/
 │
+├── assets/
+│   ├── segmentation_comparison_1.png   # Hero comparison (Original / GT / Prediction / Overlay)
+│   ├── segmentation_comparison_2.png   # Sloped path segmentation example
+│   └── segmentation_comparison_3.png   # Uphill rocky segmentation example
+│
 ├── rover_v3.ipynb                      # Training notebook & architecture source of truth
 ├── best_rover_v3_segmentation_head.pth # Saved weights for the custom segmentation head
 │
@@ -297,6 +308,10 @@ ROVER-SIH26126/
 ├── .gitignore                          # Git patterns to ignore
 └── .gitattributes                       # Git attributes definition
 ```
+
+* [assets/segmentation_comparison_3.png](assets/segmentation_comparison_3.png) is shown below, demonstrating a rocky path and vegetation classification:
+
+![ROVER V3 Uphill Rocky Segmentation Comparison](assets/segmentation_comparison_3.png)
 
 * [rover_v3.ipynb](file:///c:/Users/apank/Documents/ROVER-SIH26126/rover_v3.ipynb): Training notebook containing frozen DINOv2 setup, combined Focal Loss code, and learning curves.
 * [best_rover_v3_segmentation_head.pth](file:///c:/Users/apank/Documents/ROVER-SIH26126/best_rover_v3_segmentation_head.pth): Fine-tuned classifier weights.
