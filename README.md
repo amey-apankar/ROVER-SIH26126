@@ -19,9 +19,11 @@ ROVER is a **perception and traversability reasoning module**. It is not a compl
 
 ## 2. Problem Statement Context
 
-* **Problem Statement ID**: 26126
+* **Problem Statement ID**: SIH26126
 * **Official Title**: Vision Based Autonomous Navigation for Unmanned Ground Vehicle for Outdoor environment
 * **Category**: Smart India Hackathon (SIH)
+* **Organization**:Bharat Electronics Limited
+* **Theme**:Smart Automation
 
 ### The Visual Perception Challenge
 Outdoor off-road environments present unpredictable terrain, changing light, and unstructured routes. Standard navigation systems fail in unstructured environments without lane lines or clear pavement. To navigate safely, a ground vehicle must rely on local camera perception to distinguish drivable terrain from natural hazards (rocks, logs, trees) in real time. ROVER implements this critical perception and traversability estimation layer.
