@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ROVER Cockpit Perception v3.0</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700;900&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
+        rel="stylesheet" />
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        .font-space {
+            font-family: 'Space Grotesk', sans-serif;
+        }
+
+        .font-mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+
+        /* Custom Scrollbars to keep dashboard layout integrated */
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 99px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        @keyframes scan {
+            0% {
+                top: 0%;
+                opacity: 1;
+            }
+
+            100% {
+                top: 100%;
+                opacity: 1;
+            }
+        }
+
+        .animate-scan {
+            animation: scan 2s linear infinite;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(6px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .fade-in {
+            animation: fadeIn 0.4s ease forwards;
+        }
+    </style>
+</head>
+
+<body
+    class="h-screen w-screen bg-[#0c0d0e] text-zinc-200 overflow-hidden selection:bg-[#ff9a26] selection:text-black">
+
+    <!-- MAIN DARK DASHBOARD OUTER GRID -->
+    <div class="w-full h-full bg-[#0c0d0e] p-6 flex gap-6 overflow-hidden relative">
+
+        <!-- MAIN LAYOUT FRAME -->
+        <div class="flex-1 flex flex-col min-h-0 gap-6">
+
+            <!-- TOP NAVIGATION HEADER -->
+            <header class="flex justify-between items-center shrink-0">
+                <div class="flex items-center gap-3">
+                    <div class="flex items-center gap-2 bg-[#161719] px-4 py-2 rounded-full border border-zinc-800/40">
+                        <span class="material-symbols-outlined text-[#ff9a26] text-base">radio_button_checked</span>
+                        <span class="font-space font-bold text-xs tracking-wider uppercase text-white">ROVER Autonomous Perception v3.0</span>
+                    </div>
+                </div>
+
+                <!-- VIEW TOGGLE MODE -->
+                <div class="flex items-center gap-4 bg-[#131416] p-1 rounded-full border border-zinc-800/60">
+                    <button onclick="setViewMode('segmentation')" id="toggle-seg" 
+                        class="px-4 py-1.5 rounded-full text-xs font-space font-bold tracking-wider transition-all duration-200 uppercase bg-[#ff9a26] text-black">
+                        Raw Prediction
+                    </button>
+                    <button onclick="setViewMode('traversability')" id="toggle-trav" 
+                        class="px-4 py-1.5 rounded-full text-xs font-space font-bold tracking-wider transition-all duration-200 uppercase text-zinc-400 hover:text-white">
+                        Rover Traversability
+                    </button>
+                </div>
+
+                <div class="flex items-center gap-2">
+                    <div class="bg-[#161719] text-zinc-300 text-xs font-semibold px-4 py-2 rounded-full flex items-center gap-2 border border-zinc-800/40">
+                        <span>V3 Validation mIoU: 51.9%</span>
+                    </div>
+                </div>
+            </header>
+
+            <!-- DASHBOARD CONTENT SPACE -->
+            <div class="flex-1 flex gap-6 min-h-0">
+
+                <!-- MAIN WORKSPACE COLUMN (Arena + Legend explanation) -->
+                <main class="flex-1 flex flex-col gap-6 min-w-0 min-h-0">
+
+                    <!-- Arena Container (Styled matching "Projects Timeline" frame) -->
+                    <div class="flex-1 bg-[#131416] border border-zinc-800/60 rounded-3xl relative overflow-hidden flex items-center justify-center p-6 shadow-lg">
+
+                        <!-- STATE: Empty Dropzone -->
+                        <div id="state-empty"
+                            class="w-full max-w-xl border border-zinc-800 hover:border-[#ff9a26] rounded-2xl p-12 flex flex-col items-center justify-center cursor-pointer transition-all duration-300 bg-black/30 group"
+                            onclick="document.getElementById('file-upload').click()">
+                            <div class="p-4 rounded-full bg-[#161719] border border-zinc-800 group-hover:border-[#ff9a26] transition-colors duration-300 mb-5">
+                                <span class="material-symbols-outlined text-[32px] text-zinc-500 group-hover:text-[#ff9a26] transition-colors duration-300">add_to_photos</span>
+                            </div>
+                            <h2 class="text-lg font-space font-black tracking-wide text-white transition-colors duration-300">
+                                INITIALIZE NEURAL SCAN</h2>
+                            <p class="mt-2 font-mono text-zinc-500 text-[10px] tracking-widest uppercase">SELECT
+                                TACTICAL FEED TO BEGIN OPERATION</p>
+                        </div>
+                        <input type="file" id="file-upload" class="hidden" accept="image/*" onchange="handleUpload(event)">
+
+                        <!-- STATE: Loading -->
+                        <div id="state-loading"
+                            class="hidden absolute inset-0 flex items-center justify-center bg-black/80 backdrop-blur-sm z-30 p-4">
+                            <img id="img-loading" src="" alt="Raw uploaded feed"
+                                class="w-full h-full object-contain filter grayscale opacity-30 blur-[1px]" />
+                            <div class="absolute left-0 right-0 h-[2px] bg-[#ff9a26] shadow-[0_0_20px_#ff9a26] animate-scan z-20"></div>
+                            <div class="absolute inset-0 flex items-center justify-center z-30">
+                                <div class="bg-[#131416] border border-zinc-800 px-8 py-6 rounded-2xl flex flex-col items-center shadow-2xl max-w-sm">
+                                    <span class="material-symbols-outlined text-[32px] text-[#ff9a26] animate-spin mb-4">progress_activity</span>
+                                    <span id="loading-text" class="font-space font-bold text-white text-xs tracking-wider text-center uppercase">EXTRACTING DINOV2 FEATURES...</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- STATE: Complete (Before/After Slider) -->
+                        <div id="state-complete"
+                            class="hidden absolute inset-0 w-full h-full flex items-center justify-center rounded-2xl overflow-hidden select-none group bg-[#131416]"
+                            onmousemove="handleSliderMove(event)" ontouchmove="handleSliderMove(event)">
+
+                            <img id="img-base" src="" alt="Original" class="absolute inset-0 w-full h-full object-contain pointer-events-none" />
+                            <img id="img-overlay" src="" alt="Overlay Display"
+                                class="absolute inset-0 w-full h-full object-contain pointer-events-none"
+                                style="clip-path: polygon(50% 0, 100% 0, 100% 100%, 50% 100%);" />
+
+                            <div id="slider-overlay"
+                                class="absolute top-0 bottom-0 z-20 flex items-center justify-center pointer-events-none w-1"
+                                style="left: 50%; transform: translateX(-50%);">
+                                <div class="w-[2px] h-full bg-[#ff9a26]"></div>
+                                <div class="absolute w-8 h-8 bg-[#161719] border border-zinc-700 rounded-full flex items-center justify-center shadow-lg">
+                                    <span class="material-symbols-outlined text-[#ff9a26] text-base font-bold">swap_horiz</span>
+                                </div>
+                            </div>
+
+                            <button onclick="resetState()"
+                                class="absolute top-6 right-6 z-40 bg-[#161719]/90 hover:bg-[#ff9a26] hover:text-black text-white border border-zinc-800 px-4 py-2 rounded-xl text-xs font-space font-bold tracking-wider transition-all duration-300 backdrop-blur opacity-0 group-hover:opacity-100 uppercase">
+                                Drop Feed
+                            </button>
+                        </div>
+
+                        <!-- STATE: Error -->
+                        <div id="state-error"
+                            class="hidden w-full max-w-md flex flex-col items-center justify-center p-8 bg-[#131416] border border-red-900/40 rounded-2xl text-center">
+                            <span class="material-symbols-outlined text-[48px] text-red-500 mb-3 font-light">report</span>
+                            <h3 class="font-space font-bold text-white text-lg tracking-wide uppercase">NEURAL LINK FAILED</h3>
+                            <p id="error-msg" class="mt-2 font-mono text-zinc-500 text-xs leading-relaxed"></p>
+                            <button onclick="resetState()"
+                                class="mt-6 bg-[#ff9a26] hover:bg-[#ffa947] text-black px-6 py-2.5 rounded-xl font-space font-bold text-xs tracking-wider transition-all duration-200">
+                                RESET SYSTEM
+                            </button>
+                        </div>
+
+                    </div>
+
+                    <!-- FOOTER PANEL: TRAVERSABILITY EXPLANATION -->
+                    <div class="bg-[#131416] border border-zinc-800/60 rounded-2xl p-4 shrink-0 flex gap-6 items-center">
+                        <div class="shrink-0 font-space font-black text-xs text-white uppercase tracking-wider">Traversability Zones:</div>
+                        <div class="flex-1 flex gap-4 text-[11px]">
+                            <div class="flex items-center gap-2">
+                                <span class="w-3 h-3 bg-emerald-500 rounded-sm"></span>
+                                <span class="text-zinc-300"><strong>Preferred (High):</strong> Landscape, Dry Grass</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="w-3 h-3 bg-amber-500 rounded-sm"></span>
+                                <span class="text-zinc-300"><strong>Caution (Medium):</strong> Lush/Dry Bushes, Ground Clutter</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="w-3 h-3 bg-red-500 rounded-sm"></span>
+                                <span class="text-zinc-300"><strong>Hazard (Avoid):</strong> Logs, Rocks (with Safety Buffer)</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="w-3 h-3 bg-zinc-700 rounded-sm"></span>
+                                <span class="text-zinc-300"><strong>Invalid:</strong> Sky, Trees, Background</span>
+                            </div>
+                        </div>
+                    </div>
+                </main>
+
+                <!-- RIGHT SIDEBAR: ROBOTICS TELEMETRY PANEL -->
+                <aside class="w-80 bg-[#131416] border border-zinc-800/60 rounded-3xl p-4 flex flex-col shrink-0 shadow-lg min-h-0 justify-between">
+                    <div>
+                        <!-- Section: Status Header -->
+                        <div class="flex items-center justify-between pb-2 border-b border-zinc-800/60 mb-2">
+                            <h2 class="text-white font-space font-black uppercase tracking-wide text-xs flex items-center gap-2">
+                                <span class="material-symbols-outlined text-[#ff9a26] text-sm">dashboard</span>
+                                Telemetry Cockpit
+                            </h2>
+                            <div id="status-container" class="flex items-center gap-1.5 bg-zinc-800/50 px-2 py-0.5 rounded-full border border-zinc-800">
+                                <span id="status-dot" class="w-1.5 h-1.5 bg-zinc-500 rounded-full"></span>
+                                <span id="status-text" class="text-[9px] font-mono font-bold text-zinc-400 uppercase">STANDBY</span>
+                            </div>
+                        </div>
+
+                        <!-- Metric: Drivability Corridor Status -->
+                        <div class="bg-[#191a1d]/60 border border-zinc-800/40 p-3 rounded-xl mb-2">
+                            <span class="uppercase text-[9px] tracking-widest font-mono text-zinc-500 block mb-0.5">Recommended Corridor</span>
+                            <div id="corridor-status" class="font-space font-black text-lg text-zinc-400">STANDBY</div>
+                            <span id="corridor-reason" class="text-[8px] font-mono text-zinc-500 block mt-0.5 uppercase"></span>
+                        </div>
+
+                        <!-- Progress Bar: Traversability Score -->
+                        <div class="bg-[#191a1d]/60 border border-zinc-800/40 p-3 rounded-xl mb-2">
+                            <div class="flex justify-between items-center mb-1">
+                                <span class="uppercase text-[9px] tracking-widest font-mono text-zinc-500">Traversability Index</span>
+                                <span id="traversability-val" class="font-space font-bold text-xs text-white">--%</span>
+                            </div>
+                            <div class="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden">
+                                <div id="traversability-bar" class="bg-[#ff9a26] h-full transition-all duration-300" style="width: 0%"></div>
+                            </div>
+                        </div>
+
+                        <!-- Structured Obstacle Metrics -->
+                        <div class="grid grid-cols-2 gap-2 mb-2">
+                            <div class="bg-[#191a1d]/40 border border-zinc-800/20 p-2 rounded-lg flex flex-col justify-between">
+                                <span class="text-[8px] font-mono tracking-widest text-zinc-500 uppercase">Rock Area</span>
+                                <span id="rock-val" class="font-space font-black text-white text-sm mt-0.5">--%</span>
+                            </div>
+                            <div class="bg-[#191a1d]/40 border border-zinc-800/20 p-2 rounded-lg flex flex-col justify-between">
+                                <span class="text-[8px] font-mono tracking-widest text-zinc-500 uppercase">Log Area</span>
+                                <span id="log-val" class="font-space font-black text-white text-sm mt-0.5">--%</span>
+                            </div>
+                        </div>
+
+                        <!-- Hazards & Confidence -->
+                        <div class="flex flex-col gap-1.5">
+                            <div class="flex justify-between items-center text-xs py-1 px-2.5 bg-[#191a1d]/20 rounded-lg">
+                                <span class="text-zinc-500 font-medium">Hazard Regions</span>
+                                <span id="obstacles-val" class="font-mono text-white font-semibold">--</span>
+                            </div>
+                            <div class="flex justify-between items-center text-xs py-1 px-2.5 bg-[#191a1d]/20 rounded-lg">
+                                <span class="text-zinc-500 font-medium">Confidence Score</span>
+                                <span id="confidence-val" class="font-mono text-[#ff9a26] font-semibold">--</span>
+                            </div>
+                            <div class="flex justify-between items-center text-xs py-1 px-2.5 bg-[#191a1d]/20 rounded-lg">
+                                <span class="text-zinc-500 font-medium">Latency</span>
+                                <span id="latency-val" class="font-mono text-white font-semibold">--</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Legend list of classes -->
+                    <div class="border-t border-zinc-800/60 pt-2 mt-2">
+                        <span class="text-[8px] font-mono tracking-widest text-zinc-500 block mb-1 uppercase">Semantic Classes</span>
+                        <div class="grid grid-cols-3 gap-x-1.5 gap-y-0.5 text-[7.5px] font-space font-bold uppercase text-zinc-400" id="target-classes-list"></div>
+                    </div>
+                </aside>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- PIPELINE SCRIPT LOGIC -->
+    <script>
+        // Class definitions 
+        const targetClasses = [
+            { name: 'Background', color: '#1e293b' },
+            { name: 'Trees', color: '#228B22' },
+            { name: 'Lush Bushes', color: '#32CD32' },
+            { name: 'Dry Grass', color: '#FFD700' },
+            { name: 'Dry Bushes', color: '#FF8C00' },
+            { name: 'Ground Clutter', color: '#808080' },
+            { name: 'Logs', color: '#FF00FF' },
+            { name: 'Rocks', color: '#FF0000' },
+            { name: 'Landscape', color: '#00FF00' },
+            { name: 'Sky', color: '#00BFFF' },
+        ];
+
+        // Renders target classes list
+        const listEl = document.getElementById('target-classes-list');
+        targetClasses.forEach((cls, idx) => {
+            listEl.innerHTML += `
+            <div class="flex items-center gap-1 py-0">
+                <span class="w-1.5 h-1.5 rounded-full shrink-0" style="background-color: ${cls.color}"></span>
+                <span class="truncate">${idx}. ${cls.name}</span>
+            </div>`;
+        });
+
+        // DOM Elements
+        const stateEmpty = document.getElementById('state-empty');
+        const stateLoading = document.getElementById('state-loading');
+        const stateComplete = document.getElementById('state-complete');
+        const stateError = document.getElementById('state-error');
+        const imgLoading = document.getElementById('img-loading');
+        const imgBase = document.getElementById('img-base');
+        const imgOverlay = document.getElementById('img-overlay');
+        const sliderOverlay = document.getElementById('slider-overlay');
+        const loadingText = document.getElementById('loading-text');
+
+        // Telemetry DOM
+        const statusDot = document.getElementById('status-dot');
+        const statusText = document.getElementById('status-text');
+        const corridorText = document.getElementById('corridor-status');
+        const traversabilityVal = document.getElementById('traversability-val');
+        const traversabilityBar = document.getElementById('traversability-bar');
+        const rockVal = document.getElementById('rock-val');
+        const logVal = document.getElementById('log-val');
+        const obstaclesVal = document.getElementById('obstacles-val');
+        const confidenceVal = document.getElementById('confidence-val');
+        const latencyVal = document.getElementById('latency-val');
+
+        // Toggle state
+        let currentMaskUrl = '';
+        let currentTravUrl = '';
+        let currentViewMode = 'segmentation'; // 'segmentation' or 'traversability'
+
+        const loadingMessages = [
+            'EXTRACTING DINOV2 FEATURES...',
+            'RUNNING SEGMENTATION HEAD...',
+            'COMPUTING TRAVERSABILITY SCORES...',
+            'ESTIMATING SAFE PATH CORRIDOR...',
+        ];
+        let loadingInterval = null;
+
+        function setViewMode(mode) {
+            currentViewMode = mode;
+            const btnSeg = document.getElementById('toggle-seg');
+            const btnTrav = document.getElementById('toggle-trav');
+            
+            if (mode === 'segmentation') {
+                btnSeg.className = "px-4 py-1.5 rounded-full text-xs font-space font-bold tracking-wider transition-all duration-200 uppercase bg-[#ff9a26] text-black";
+                btnTrav.className = "px-4 py-1.5 rounded-full text-xs font-space font-bold tracking-wider transition-all duration-200 uppercase text-zinc-400 hover:text-white";
+                if (currentMaskUrl) imgOverlay.src = currentMaskUrl;
+            } else {
+                btnTrav.className = "px-4 py-1.5 rounded-full text-xs font-space font-bold tracking-wider transition-all duration-200 uppercase bg-[#ff9a26] text-black";
+                btnSeg.className = "px-4 py-1.5 rounded-full text-xs font-space font-bold tracking-wider transition-all duration-200 uppercase text-zinc-400 hover:text-white";
+                if (currentTravUrl) imgOverlay.src = currentTravUrl;
+            }
+        }
+
+        function updateStatus(status) {
+            statusDot.className = 'w-1.5 h-1.5 rounded-full';
+            statusText.className = 'text-[9px] font-mono font-bold uppercase';
+            
+            if (status === 'SAFE') {
+                statusDot.classList.add('bg-emerald-500');
+                statusText.classList.add('text-emerald-400');
+                statusText.innerText = 'ONLINE';
+            } else if (status === 'CAUTION') {
+                statusDot.classList.add('bg-amber-500');
+                statusText.classList.add('text-amber-400');
+                statusText.innerText = 'CAUTION';
+            } else if (status === 'BLOCKED') {
+                statusDot.classList.add('bg-red-500');
+                statusText.classList.add('text-red-500');
+                statusText.innerText = 'BLOCKED';
+            } else {
+                statusDot.classList.add('bg-zinc-500');
+                statusText.classList.add('text-zinc-400');
+                statusText.innerText = 'STANDBY';
+            }
+        }
+
+        function showOnly(el) {
+            [stateEmpty, stateLoading, stateComplete, stateError].forEach(s => s.classList.add('hidden'));
+            el.classList.remove('hidden');
+        }
+
+        // Upload handler
+        function handleUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                const dataUrl = e.target.result;
+
+                imgLoading.src = dataUrl;
+                imgBase.src = dataUrl;
+                imgOverlay.src = dataUrl; 
+
+                showOnly(stateLoading);
+                updateStatus('LOADING');
+
+                let msgIdx = 0;
+                loadingInterval = setInterval(() => {
+                    msgIdx = (msgIdx + 1) % loadingMessages.length;
+                    loadingText.innerText = loadingMessages[msgIdx];
+                }, 1000);
+
+                const formData = new FormData();
+                formData.append('file', file);
+
+                fetch('/scan', { method: 'POST', body: formData })
+                    .then(res => {
+                        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                        return res.json();
+                    })
+                    .then(data => {
+                        clearInterval(loadingInterval);
+
+                        if (data.status === 'ERROR') {
+                            showOnly(stateError);
+                            document.getElementById('error-msg').innerText = data.message || 'Unknown server error.';
+                            updateStatus('ERROR');
+                            return;
+                        }
+
+                        // Store both view URLs
+                        currentMaskUrl = data.mask_base64;
+                        currentTravUrl = data.traversability_base64;
+                        setViewMode(currentViewMode);
+
+                        // Update Telemetry Panel
+                        if (data.telemetry) {
+                            const travStatus = data.telemetry.traversability; // SAFE, CAUTION, BLOCKED
+                            updateStatus(travStatus);
+                            
+                            corridorText.innerText = travStatus;
+                            corridorText.className = 'font-space font-black text-xl ' + 
+                                (travStatus === 'SAFE' ? 'text-emerald-400' : (travStatus === 'CAUTION' ? 'text-amber-400' : 'text-red-500'));
+
+                            // Display navigation reason
+                            const reasonText = document.getElementById('corridor-reason');
+                            if (travStatus === 'BLOCKED') {
+                                reasonText.innerText = 'NO SAFE CONTINUOUS CORRIDOR';
+                                reasonText.className = 'text-[9px] font-mono text-red-400 block mt-1 uppercase';
+                            } else {
+                                reasonText.innerText = '';
+                            }
+
+                            // Calculate overall traversability index
+                            const scorePct = data.telemetry.traversability_index ?? 0;
+                            traversabilityVal.innerText = `${scorePct}%`;
+                            traversabilityBar.style.width = `${scorePct}%`;
+                            
+                            rockVal.innerText = `${data.telemetry.rock_area_percent ?? 0}%`;
+                            logVal.innerText = `${data.telemetry.log_area_percent ?? 0}%`;
+                            confidenceVal.innerText = data.telemetry.confidence ?? '--';
+                            latencyVal.innerText = data.telemetry.latency ?? '--';
+                            obstaclesVal.innerText = data.hazards ? data.hazards.length : '0';
+                        }
+
+                        // Reset slider to 50%
+                        imgOverlay.style.clipPath = 'polygon(50% 0, 100% 0, 100% 100%, 50% 100%)';
+                        sliderOverlay.style.left = '50%';
+
+                        showOnly(stateComplete);
+                        stateComplete.classList.add('fade-in');
+                    })
+                    .catch(err => {
+                        clearInterval(loadingInterval);
+                        showOnly(stateError);
+                        document.getElementById('error-msg').innerText = err.message || 'Could not reach ROVER Engine.';
+                        updateStatus('ERROR');
+                        console.error('Fetch error:', err);
+                    });
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // Slider drag
+        function handleSliderMove(e) {
+            if (stateComplete.classList.contains('hidden')) return;
+            let clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const rect = stateComplete.getBoundingClientRect();
+            let x = Math.max(0, Math.min(clientX - rect.left, rect.width));
+            const pct = (x / rect.width) * 100;
+            imgOverlay.style.clipPath = `polygon(${pct}% 0, 100% 0, 100% 100%, ${pct}% 100%)`;
+            sliderOverlay.style.left = `${pct}%`;
+        }
+
+        // Reset
+        function resetState() {
+            clearInterval(loadingInterval);
+            document.getElementById('file-upload').value = '';
+            
+            // Clear telemetry UI
+            corridorText.innerText = 'STANDBY';
+            corridorText.className = 'font-space font-black text-xl text-zinc-400';
+            document.getElementById('corridor-reason').innerText = '';
+            traversabilityVal.innerText = '--%';
+            traversabilityBar.style.width = '0%';
+            rockVal.innerText = '--%';
+            logVal.innerText = '--%';
+            obstaclesVal.innerText = '--';
+            confidenceVal.innerText = '--';
+            latencyVal.innerText = '--';
+            
+            currentMaskUrl = '';
+            currentTravUrl = '';
+            loadingText.innerText = loadingMessages[0];
+            showOnly(stateEmpty);
+            updateStatus('STANDBY');
+        }
+    </script>
+</body>
+
+</html>
