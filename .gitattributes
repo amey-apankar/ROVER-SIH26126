@@ -1,0 +1,3 @@
+# Treat the UI as vendored/generated code so GitHub doesn't classify the repo as an HTML project
+diagnostic_interface.html linguist-generated=true
+*.html linguist-generated=true

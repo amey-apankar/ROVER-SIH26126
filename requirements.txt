@@ -1,0 +1,16 @@
+# Web server
+fastapi
+uvicorn[standard]
+python-multipart
+
+# Deep learning
+torch
+torchvision
+
+# Image processing
+Pillow
+numpy
+opencv-python
+
+# Training utilities (required for scripts/ only, not for inference)
+tqdm
