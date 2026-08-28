@@ -1,95 +1,176 @@
-# ROVER: Visual Perception & Traversability System for Unmanned Ground Vehicles
+# ROVER — Visual Perception & Traversability System for UGVs
 
-ROVER is a visual perception and traversability estimation system designed to help unmanned ground vehicles (UGVs) understand unstructured outdoor terrain. It identifies natural hazards and estimates safe driving corridors using camera-based perception. 
+ROVER is a visual perception and traversability estimation subsystem designed for Unmanned Ground Vehicles (UGVs) operating in complex, off-road environments. 
 
 ---
 
-## 1. Problem Statement Context
+## 1. Overview
+
+UGVs must navigate unpredictable paths, rocks, logs, and vegetation without relying on GPS. ROVER solves the vision-based scene interpretation challenge. The system takes a single camera image as input, extracts rich semantic features, estimates local ground traversability, and recommends a safe driving corridor.
+
+```
+ Camera Image ──► AI Terrain Segmentation ──► Hazard Refinement ──► Traversability Mapping ──► Corridor Recommendation
+```
+
+### Purpose and Scope
+ROVER is a **perception and traversability reasoning module**. It is not a complete autonomous vehicle stack. It processes camera data to recommend safe paths, which can then be ingested by local vehicle motion controllers and path executors.
+
+---
+
+## 2. Problem Statement Context
 
 * **Problem Statement ID**: 26126
-* **Problem Statement Title**: Vision Based Autonomous Navigation for Unmanned Ground Vehicle for Outdoor environment
+* **Official Title**: Vision Based Autonomous Navigation for Unmanned Ground Vehicle for Outdoor environment
 * **Category**: Smart India Hackathon (SIH)
 
 ### The Visual Perception Challenge
 Outdoor off-road environments present unpredictable terrain, changing light, and unstructured routes. Standard navigation systems fail in unstructured environments without lane lines or clear pavement. To navigate safely, a ground vehicle must rely on local camera perception to distinguish drivable terrain from natural hazards (rocks, logs, trees) in real time. ROVER implements this critical perception and traversability estimation layer.
 
+> [!IMPORTANT]
+> **Scope Note**: ROVER focuses specifically on the **Perception and Traversability** portion of the problem. Low-level vehicle control, visual odometry, and closed-loop visual SLAM are outside the scope of this implementation and are left for integration with dedicated navigation frameworks.
+
 ---
 
-## 2. System Architecture
+## 3. The Processing Pipeline
 
-The UGV perception pipeline processes images through the following stages:
+ROVER translates raw camera pixels into a driving status using a multi-stage software pipeline:
+
+1. **Camera Image**: Receives a single $476 \times 266$ RGB image from the UGV's forward-facing camera.
+2. **DINOv2 Feature Extraction**: Passes the preprocessed image through a frozen vision transformer backbone to extract high-dimensional patch features.
+3. **ROVER V3 Segmentation Head**: Predicts a class logit tensor using a custom multi-layer convolutional decoder.
+4. **10-Class Semantic Segmentation**: Assigns a terrain class index (0–9) to every pixel in the image.
+5. **Runtime Hazard Refinement**: Applies geometrical and visual color filters to refine raw Log and Rock predictions.
+6. **Physical Traversability Estimation**: Converts refined semantic classes and prediction confidences into a physical drivability score map.
+7. **Safety Buffer Allocation**: Expands hard hazard boundaries outward using morphological operations to prevent the vehicle from driving too close to obstacles.
+8. **Safe Corridor Search**: Scans the lower ground region to locate a lane width of 90 pixels with the highest safety score.
+9. **UGV Navigation Recommendation**: Outputs a visual path overlay and status label (`SAFE`, `CAUTION`, or `BLOCKED`).
+
+---
+
+## 4. Why Semantic Segmentation?
+
+Traditional computer vision uses bounding boxes to detect objects. While bounding boxes tell a vehicle *where* an obstacle is, they do not define the exact boundaries of the traversable ground. 
 
 ```
-      Camera Image
-           │
-           ▼
- DINOv2 ViT-S/14 Transformer
-           │
-           ▼
- ROVER V3 Segmentation Head
-           │
-           ▼
- 10-Class Terrain Segmentation
-           │
-           ▼
-  Log/Rock Hazard Refinement
-           │
-           ▼
-   Traversability Map
-           │
-           ▼
-  Morphological Dilation Buffer
-           │
-           ▼
-  Safe Corridor Estimation
-           │
-           ▼
-   UGV Path Recommendation
+Bounding Box Detection (Object detection)  ──► "There is a rock somewhere in this rectangle."
+Pixel-Level Class Labels (Segmentation)    ──► "These exact pixels are rock; these adjacent pixels are dirt road."
 ```
 
----
+Semantic segmentation classifies every individual pixel in the image. This detail is essential for off-road driving, where the boundary between a sandy trail, low grass, and a large boulder determines if a vehicle will get stuck.
 
-## 3. Deep Learning Architecture
-
-ROVER V3 utilizes a frozen transformer backbone combined with a custom convolution-based segmentation head.
-
-* **Backbone**: DINOv2 ViT-S/14 (Frozen)
-* **Input Resolution**: $476 \times 266$ pixels
-* **Patch Grid**: $19 \times 34 = 646$ patch tokens
-* **Feature Dimension**: 384 dimensions per patch token
-* **Segmentation Head**:
-  * $384 \to 128$ Conv2D (Kernel size 3, padding 1) + GELU activation
-  * $128 \to 128$ Conv2D (Kernel size 3, padding 1) + GELU activation
-  * $128 \to 10$ Classifier Conv2D (Kernel size 1)
+### Key Computer Vision Distinctions
+* **Classification**: Predicts a single label for the entire image (e.g., "Forest scene").
+* **Object Detection**: Draws rectangular bounding boxes around individual objects (e.g., "Rock at location X, Y").
+* **Semantic Segmentation**: Assigns a category label to every pixel, defining exact shapes and terrain boundaries.
+* **Traversability Estimation**: Evaluates segmented terrain pixels to decide if they are physically drivable.
 
 ---
 
-## 4. Semantic Classes
+## 5. Deep Learning Architecture
 
-The model classifies terrain into 10 distinct classes:
+ROVER V3 uses a hybrid architecture combining a transformer backbone with a custom convolutional segmentation head.
 
-0. **Background**: Neutral or non-ground elements.
-1. **Trees**: Vertically growing trees and trunks.
-2. **Lush Bushes**: Green foliage and dense shrubbery.
-3. **Dry Grass**: Tall, yellow, or dry grassy areas.
-4. **Dry Bushes**: Woody, dry, or dead bushes.
-5. **Ground Clutter**: Detritus, leaves, or minor twigs on the floor.
-6. **Logs**: Fallen wooden logs (hazardous).
-7. **Rocks**: Large rocks, boulders, and stones (hazardous).
-8. **Landscape**: Open terrain, dirt roads, and traversable pathways.
-9. **Sky**: Clouds and open sky.
+```
+   Input Image (476x266)
+           │
+           ▼
+  DINOv2 ViT-S/14 (Frozen)  ──► Extracts 646 patch tokens (384-dim features)
+           │
+           ▼
+   Reshape to 19x34
+           │
+           ▼
+ ROVER V3 Head (Trainable)  ──► 3-layer ConvDecoder resolves upsampled 10-class map
+```
+
+### Transformer Backbone (DINOv2 ViT-S/14)
+The system uses Meta's DINOv2 (Vision Transformer, Small, patch size 14) as a frozen feature extractor. DINOv2 converts the input image into a grid of feature patches:
+* **Frozen weights**: The backbone is not retrained. Freezing the transformer preserves its pretrained visual representations and reduces the training footprint, making it ideal for smaller datasets.
+* **Feature Grid**: An input of $476 \times 266$ is divided into patches of $14 \times 14$ pixels. This produces a patch grid of $19 \times 34 = 646$ tokens.
+* **Dimension**: Each token is represented by a 384-dimensional feature vector.
+
+### Custom ROVER V3 Segmentation Head
+The segmentation head acts as a decoder. It reshapes the 646 patch tokens from a flat sequence back into a spatial feature map of size $19 \times 34 \times 384$. It then upsamples and decodes the features using three convolutional layers:
+1. **Layer 1**: Conv2D ($384 \to 128$ channels, $3 \times 3$ kernel, padding 1) + GELU activation.
+2. **Layer 2**: Conv2D ($128 \to 128$ channels, $3 \times 3$ kernel, padding 1) + GELU activation.
+3. **Layer 3 (Classifier)**: Conv2D ($128 \to 10$ channels, $1 \times 1$ kernel) to output class logits.
 
 ---
 
-## 5. Segmentation Performance
+## 6. Training Strategy
 
-The V3 segmentation model achieves the following validation metrics evaluated on the off-road validation dataset:
+The custom segmentation head was trained on the Duality off-road dataset using Colab.
 
+### Training Configuration
+* **Optimizer**: AdamW (Learning Rate: `1e-3`, Weight Decay: `1e-4`)
+* **Learning Rate Scheduler**: `ReduceLROnPlateau` (updates learning rate by a factor of 0.5 if validation loss does not improve for 3 consecutive epochs).
+* **Batch Size**: 8
+* **Epochs**: 30
+* **Random Seed**: 42 (for reproducibility of data splits and weight initialization)
+* **Target Resolution**: All training images were resized to $476 \times 266$ and normalized to match the DINOv2 pretraining distribution.
+
+### Loss Function: Combined Weighted Loss
+Off-road datasets are highly imbalanced. Common classes like Landscape (dirt road) and Sky contain millions of pixels, while critical hazards like Logs and Rocks make up a tiny fraction of the dataset. A model trained on standard cross-entropy might achieve high overall accuracy by ignoring the rare hazard classes.
+
+To address this, ROVER V3 uses a combined loss function:
+$$\text{Total Loss} = 0.5 \times \text{Weighted Cross Entropy} + 0.5 \times \text{Weighted Focal Loss}$$
+
+* **Weighted Cross Entropy**: Applies scaling factors (inverse frequency weights) to penalize errors on rare classes more heavily.
+* **Weighted Focal Loss ($\gamma = 2.0$)**: Adds a modulating factor $(1 - p_t)^\gamma$ to standard cross entropy. As the model's confidence in a pixel increases, the loss contribution drops. This prevents easy, common pixels (like Sky) from dominating the gradients, forcing the model to focus on learning difficult boundaries (like Logs and Ground Clutter).
+
+---
+
+## 7. Dataset Details
+
+The system was trained on the **Duality off-road dataset**, which consists of synthetic sensor imagery from off-road environments. 
+* **Benefits**: Provides pixel-perfect ground truth labels for complex categories like Ground Clutter and Logs, which are notoriously difficult and time-consuming to label manually.
+* **Generalization**: Synthetic training allows the model to learn structural and geometric cues. However, a synthetic-to-real domain gap remains, meaning performance can vary under real-world lighting, dust, and weather conditions.
+
+---
+
+## 8. Semantic Classes & Traversability Mapping
+
+Each of the 10 predicted classes is mapped to a physical drivability category:
+
+| Class ID | Class Name | Traversability Mapping | Drivability Score | Description |
+| :---: | :--- | :--- | :---: | :--- |
+| **0** | Background | **Invalid** | 0.0 | Non-ground elements, scenery, or out-of-bounds pixels. |
+| **1** | Trees | **Invalid** | 0.0 | Vertically standing trunks and branches; non-drivable. |
+| **2** | Lush Bushes | **Caution** | 0.4 | Thick green vegetation; traversable but slow, potential hidden hazards. |
+| **3** | Dry Grass | **Preferred** | 0.9 | Dry grassy patches; easily traversable by standard UGVs. |
+| **4** | Dry Bushes | **Caution** | 0.4 | Dead or dry brushwood structures; caution required. |
+| **5** | Ground Clutter | **Caution** | 0.2 | Twigs, leaves, and forest debris; low drivability confidence. |
+| **6** | Logs | **Hazard** | -1.0 | Fallen wooden logs; high risk of high-centering. |
+| **7** | Rocks | **Hazard** | -1.0 | Medium to large rocks; risk of collision or tire puncture. |
+| **8** | Landscape | **Preferred** | 1.0 / 0.95 | Sandy dirt road, gravel tracks, or open dirt paths. |
+| **9** | Sky | **Invalid** | 0.0 | Unreachable vertical regions. |
+
+---
+
+## 9. Evaluation Metrics
+
+To evaluate model accuracy, ROVER V3 uses standard semantic segmentation metrics:
+
+### Intersection over Union (IoU)
+IoU measures the overlap between the predicted region and the ground-truth region:
+$$\text{IoU} = \frac{\text{Prediction} \cap \text{Ground Truth}}{\text{Prediction} \cup \text{Ground Truth}}$$
+* If the predicted shape matches the ground truth perfectly, IoU is 1.0. If there is no overlap, IoU is 0.0.
+* **mIoU** is the mean IoU computed across all 10 classes. This prevents common classes from hiding poor performance on smaller classes.
+
+### Dice Score (F1-like metric)
+The Dice coefficient measures spatial overlap, focusing on the ratio of correct predictions to the total area:
+$$\text{Dice} = \frac{2 \times |\text{Prediction} \cap \text{Ground Truth}|}{|\text{Prediction}| + |\text{Ground Truth}|}$$
+
+### Pixel Accuracy
+Calculates the percentage of correctly classified pixels across the entire image. 
+* *Note: If 80% of an image is Sky and Landscape, a model that classifies everything as Landscape can achieve 80% accuracy while failing completely at detecting obstacles. Therefore, IoU is the primary metric used to evaluate performance.*
+
+### Verified Validation Results (ROVER V3)
 * **Validation mIoU**: 51.90%
 * **Validation Dice**: 65.83%
 * **Validation Accuracy**: 81.29%
 
-### Per-Class Validation IoU Breakdown
+#### Per-Class IoU Results
 * **Sky**: 0.9622
 * **Trees**: 0.7066
 * **Dry Grass**: 0.6115
@@ -101,60 +182,64 @@ The V3 segmentation model achieves the following validation metrics evaluated on
 * **Logs**: 0.2570
 * **Ground Clutter**: 0.2392
 
-*Note: These are validation metrics for the semantic segmentation network and do not represent the final navigation pathing accuracy.*
+The relatively lower IoU of Logs (0.257) and Rocks (0.332) indicates that these classes remain more difficult for the segmentation model. ROVER therefore applies a separate runtime hazard-refinement stage before converting predictions into traversability.
 
 ---
 
-## 6. Traversability Reasoning
+## 10. Why Segmentation Alone Is Not Enough
 
-The system converts semantic segmentation masks into a physical drivability score based on predicted classes and local confidence:
+A segmentation model answers the question: *"What does this pixel look like?"*
+ROVER's refinement layer answers the question: *"Is this pixel actually an obstacle?"*
 
-* **Preferred Ground**: Landscape, Dry Grass (score $\approx 1.0$)
-* **Caution Ground**: Lush Bushes, Dry Bushes (score $\approx 0.4$), Ground Clutter (score $\approx 0.2$)
-* **Hazard Zones**: Logs, Rocks (score $\approx -1.0$)
-* **Invalid Regions**: Sky, Trees, Background (score $= 0.0$)
+* **Semantic segmentation $\neq$ traversability**: Landscape pixels are likely traversable, grass is preferred, bushes denote caution, while rocks and logs are absolute hazards. Sky and trees are completely invalid. This context necessitates a physical reasoning layer.
 
 ---
 
-## 7. Hazard Refinement Layer
+## 11. Runtime Hazard Refinement
 
-ROVER utilizes a second-stage visual hazard refinement system at runtime to filter out false hazard detections. These checks run in the backend API at inference time. The trained model weights remain completely unchanged.
+The segmentation network can confuse visually similar off-road elements (such as dirt vs. rocks, or logs vs. soil). At runtime, ROVER applies additional geometric and visual color filters to verify hard hazards before they are sent to the path planner. These heuristics run on the CPU during the post-processing phase. The neural network weights remain unchanged.
 
 ### Log Refinement
-Fallen wooden structures are verified using a weighted confidence score:
+Fallen trees are often misclassified as sand or grass due to color similarities. ROVER verifies log candidates using a multi-signal confidence equation:
 $$\text{log\_confidence} = 0.50 \times \text{v3\_log\_prob} + 0.20 \times \text{elongation} + 0.15 \times \text{edge\_continuity} + 0.15 \times \text{wood\_color}$$
-* **Evidence Check**: Rejects candidates if the peak V3 log probability in the component is $< 0.15$.
-* **Shape Constraints**: Requires elongated geometry (aspect ratio $\ge 1.8$), thin profile, and a maximum size limit to prevent sandy dirt trails from being misclassified as logs.
-* **Classification**: Promoted to **Hard Log** if component area $\ge 150$ px and confidence $\ge 0.70$. Otherwise, it is classified as **Low-Confidence Log**.
+* **V3 Probability Gate**: Candidates are skipped if the peak V3 log probability in the component is $< 0.15$.
+* **Shape & Color**: Evaluates connected components for elongated geometry (aspect ratio $\ge 1.8$), thin profile, and a wood-like color signature ($R > G > B$). This prevents large, brown, sandy road surfaces from being flagged as logs.
+* **Promotion**: Components $\ge 150$ px with confidence $\ge 0.70$ are promoted to **Hard Log**. Lower scores are classified as **Low-Confidence Log**.
 
 ### Rock Refinement
-Rocks are verified using solidity and edge density:
+Loose rocks are verified using solidity and edge density:
 $$\text{rock\_confidence} = 0.50 \times \text{v3\_rock\_prob} + 0.25 \times \text{solidity} + 0.25 \times \text{edge\_density}$$
-* Rejects candidates if peak Rock probability is $< 0.15$.
-* Promoted to **Hard Rock** if area $\ge 150$ px and confidence $\ge 0.70$. Otherwise, it remains a **Low-Confidence Rock**.
+* Candidates must have a peak Rock probability $\ge 0.15$.
+* Compact, high-density components $\ge 150$ px with confidence $\ge 0.70$ are promoted to **Hard Rock**. Otherwise, they are classified as **Low-Confidence Rock**.
 
 ---
 
-## 8. Hazard Safety Buffers
+## 12. Spatial Safety Buffers
 
-To prevent the vehicle from driving too close to detected obstacles, Hard Rock and Hard Log hazards receive a spatial safety buffer. The system uses morphological dilation (`cv2.dilate` with a 15x15 ellipse kernel) to follow obstacle boundaries naturally. Entering a buffer zone reduces the drivability score by 70%.
-
----
-
-## 9. Safe Corridor Estimation
-
-The planning algorithm scans candidate lanes of width 90 pixels across the lower 45% (near-ground driving region) of the camera feed:
-* **Corridor Scoring**: Evaluates candidate lanes by accumulating traversability scores and buffer penalties.
-* **Corridor Status**:
-  * **`SAFE`**: Clear path corridor found with high drivability and zero hard hazard occupancy.
-  * **`CAUTION`**: Lane selected but contains low-confidence hazards or is close to obstacle buffers.
-  * **`BLOCKED`**: No safe corridor exists. The selected lane contains a hard hazard (hazard occupancy $\ge 40$ pixels).
+UGVs should not drive immediately beside detected rocks or logs to avoid side collisions. ROVER creates a spatial buffer around confirmed Hard Hazards.
+* **Morphological Dilation**: The hard hazard mask is expanded using a $15 \times 15$ elliptical kernel (`cv2.dilate`). This creates a safety boundary that follows the object's contours.
+* **Penalty**: Pixels inside the buffer zone receive a 70% traversability score reduction, steering the corridor planner away from obstacle edges.
 
 ---
 
-## 10. ROVER Telemetry Cockpit
+## 13. Safe Corridor Estimation
 
-The web interface serves as a robotics diagnostic dashboard:
+The path planner estimates a recommended corridor in the lower 45% of the frame (representing the ground plane immediately in front of the vehicle):
+1. **Lanes**: Scans horizontal windows of width 90 pixels across the image.
+2. **Scoring**: Computes the average traversability score for each window. Columns containing non-drivable classes (Trees/Background) or safety buffers receive penalties.
+3. **Hard Obstacles**: Only Hard obstacles (not low-confidence hazards) can block the corridor.
+4. **Status Outputs**:
+   * **`SAFE`**: Clear path corridor found with high drivability and zero hard hazard occupancy.
+   * **`CAUTION`**: Lane selected but contains low-confidence hazards or is close to obstacle buffers.
+   * **`BLOCKED`**: No safe corridor exists. The selected lane contains a hard hazard (hazard occupancy $\ge 40$ pixels).
+
+*Note: This is a visual corridor recommendation layer and does not calculate real motor control signals.*
+
+---
+
+## 14. ROVER Telemetry Cockpit
+
+The web interface serves as a diagnostic console:
 
 * **Raw Prediction Mode**: Renders the exact 10-class predictions generated by the ROVER V3 model.
 * **Traversability Mode**: Renders BGR-coded drivability maps (Green for Traversable, Yellow for Caution, Red for Hard Hazards, Gray for Sky/Trees) blended at 20% opacity.
@@ -163,17 +248,44 @@ The web interface serves as a robotics diagnostic dashboard:
 
 ---
 
-## 11. Technology Stack
+## 15. Demo Verification Scenarios
+
+The system was evaluated against three distinct off-road path scenarios:
+
+### SAFE: Clear open dirt road (`test_safe.jpg`)
+* **UGV Status**: `SAFE`
+* **Raw Rock/Log Area**: Rock 0.29%, Log 0.01%
+* **Refined Hard Hazards**: Rock `0 px`, Log `0 px` (Successful false-positive filtering)
+* **Traversability Index**: `81%`
+* **Recommended Corridor**: Lane centered at $x \in [239, 329]$ with score `0.900`.
+
+### CAUTION: Obstructed trail (`test_caution.jpg`)
+* **UGV Status**: `SAFE` (Corridor avoids all obstacles)
+* **Raw Rock/Log Area**: Rock 7.20%, Log 0.09%
+* **Refined Hard Hazards**: Rock `8665 px`, Log `0 px`
+* **Traversability Index**: `24%`
+* **Recommended Corridor**: Lane offset to the left edge at $x \in [32, 122]$ with score `0.678`.
+
+### BLOCKED: Obstacles blocking path center (`test_blocked.jpg`)
+* **UGV Status**: `BLOCKED`
+* **Raw Rock/Log Area**: Rock 8.12%, Log 0.65%
+* **Refined Hard Hazards**: Rock `9602 px`, Log `10474 px` (True logs detected)
+* **Traversability Index**: `3%`
+* **Recommended Corridor**: Marked red and dashed; no safe path available (score `0.0`).
+
+---
+
+## 16. Technology Stack
 
 * **Backend**: Python, PyTorch, DINOv2, FastAPI, OpenCV, torchvision
 * **Frontend**: HTML, CSS, JavaScript
 
 ---
 
-## 12. Repository Structure
+## 17. Repository Structure
 
 ```
-ROVER/
+ROVER-SIH26126/
 │
 ├── rover_v3.ipynb                      # Training notebook & architecture source of truth
 ├── best_rover_v3_segmentation_head.pth # Saved weights for the custom segmentation head
@@ -186,9 +298,14 @@ ROVER/
 └── .gitattributes                       # Git attributes definition
 ```
 
+* [rover_v3.ipynb](file:///c:/Users/apank/Documents/ROVER-SIH26126/rover_v3.ipynb): Training notebook containing frozen DINOv2 setup, combined Focal Loss code, and learning curves.
+* [best_rover_v3_segmentation_head.pth](file:///c:/Users/apank/Documents/ROVER-SIH26126/best_rover_v3_segmentation_head.pth): Fine-tuned classifier weights.
+* [api.py](file:///c:/Users/apank/Documents/ROVER-SIH26126/api.py): FastAPI server containing the post-processing filters, buffer logic, and lane planner.
+* [diagnostic_interface.html](file:///c:/Users/apank/Documents/ROVER-SIH26126/diagnostic_interface.html): Web client for uploading images, rendering overlays, and displaying telemetry.
+
 ---
 
-## 13. Getting Started
+## 18. Getting Started
 
 ### Prerequisites
 Ensure Python 3.9+ is installed on your system.
@@ -198,7 +315,7 @@ Ensure Python 3.9+ is installed on your system.
 1. **Clone the repository**:
    ```bash
    git clone <repository-url>
-   cd object-segmentation
+   cd ROVER-SIH26126
    ```
 
 2. **Create and activate a virtual environment**:
@@ -222,6 +339,7 @@ Ensure Python 3.9+ is installed on your system.
    ```bash
    python api.py
    ```
+   *Note: On first run, PyTorch will download the DINOv2 ViT-S/14 weights from the torch.hub repository and cache them locally in `~/.cache/torch/hub`.*
 
 5. **Open the Dashboard**:
    Open your browser and navigate to `http://127.0.0.1:8000`.
@@ -231,11 +349,31 @@ Ensure Python 3.9+ is installed on your system.
 
 ---
 
-## 14. Demo Workflow
+## 19. Limitations
 
-1. **Input**: The user uploads an off-road camera image to the telemetry cockpit.
-2. **Segmentation**: The DINOv2 + ROVER V3 network outputs a pixel-level 10-class segmentation mask.
-3. **Hazard Interpretation**: The refinement layer filters out noise and determines Hard vs. Low-Confidence hazard boundaries.
-4. **Traversability**: The backend generates BGR category overlays representing physical drivability.
-5. **Corridor Scan**: The planner searches the lower ground region and draws the recommended corridor (perspective lane or blocked dashed boundary).
-6. **Telemetry**: Telemetry stats (UGV status, index %, rock/log area %, latency) are returned to the dashboard.
+While ROVER runs in under 400ms on edge hardware, users must consider the following design limitations:
+1. **Camera-Only Input**: The system lacks radar, LiDAR, or depth integration. Traversability scores assume flat ground.
+2. **Synthetic Training Bias**: The model was trained on synthetic datasets. Real-world outdoor conditions (dust, rain, or glare) will introduce domain-shift errors.
+3. **No Temporal Consistency**: Predictions are evaluated frame-by-frame. Obstacles are not tracked between consecutive frames.
+4. **Subsystem Design**: The module does not calculate steering commands or track vehicle odometry. It must be paired with low-level motion planning and control systems.
+
+---
+
+## 20. Project Scope
+
+A summary of ROVER's features:
+
+```
+[Implemented Subsystems]
+  ✓ Visual terrain segmentation (10 classes)
+  ✓ Custom convolutional segmentation head
+  ✓ Multi-signal hazard refinement (Log/Rock filters)
+  ✓ Contingency safety buffering (Morphological dilation)
+  ✓ Safe corridor search & recommendation (SAFE/CAUTION/BLOCKED status)
+  ✓ Interactive diagnostic cockpit UI
+
+[Excluded Subsystems]
+  ✗ Visual SLAM / Odometry
+  ✗ GPS-free visual localization
+  ✗ Dynamic vehicle path execution (Wheel/Motor controls)
+```
