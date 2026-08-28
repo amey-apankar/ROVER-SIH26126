@@ -175,6 +175,8 @@ The selected driving path column in front of the vehicle that maximizes terrain 
 The system was trained on the **Duality off-road dataset**, which consists of synthetic off-road sensor imagery.
 * **Benefits**: Provides pixel-perfect ground truth labels for complex categories like Ground Clutter and Logs, which are difficult and time-consuming to label manually.
 * **Generalization**: Synthetic training allows the model to learn structural and geometric cues. However, a synthetic-to-real domain gap remains, meaning performance can vary under real-world lighting, dust, and weather conditions.
+* **Dataset Documentation**: [Duality Falcon — Hackathon Segmentation Documentation](https://falcon.duality.ai/secure/documentation/hackathon-segmentation-desert?utm_source=hackathon&utm_medium=instructions&utm_campaign=HacktheNight)
+
 
 ---
 
