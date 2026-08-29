@@ -99,13 +99,15 @@
                 </div>
 
                 <!-- VIEW TOGGLE MODE -->
-                <div class="flex items-center gap-4 bg-[#131416] p-1 rounded-full border border-zinc-800/60">
+                <div class="relative flex items-center bg-[#131416] p-1 rounded-full border border-zinc-800/60 select-none">
+                    <!-- Slide Background Indicator -->
+                    <div id="toggle-slider" class="absolute top-1 bottom-1 rounded-full bg-[#ff9a26] transition-all duration-300 ease-out z-0"></div>
                     <button onclick="setViewMode('segmentation')" id="toggle-seg" 
-                        class="px-4 py-1.5 rounded-full text-xs font-space font-bold tracking-wider transition-all duration-200 uppercase bg-[#ff9a26] text-black">
+                        class="relative z-10 px-4 py-1.5 rounded-full text-xs font-space font-bold tracking-wider transition-colors duration-300 uppercase text-black">
                         Raw Prediction
                     </button>
                     <button onclick="setViewMode('traversability')" id="toggle-trav" 
-                        class="px-4 py-1.5 rounded-full text-xs font-space font-bold tracking-wider transition-all duration-200 uppercase text-zinc-400 hover:text-white">
+                        class="relative z-10 px-4 py-1.5 rounded-full text-xs font-space font-bold tracking-wider transition-colors duration-300 uppercase text-zinc-400 hover:text-white">
                         Rover Traversability
                     </button>
                 </div>
@@ -358,14 +360,22 @@
             currentViewMode = mode;
             const btnSeg = document.getElementById('toggle-seg');
             const btnTrav = document.getElementById('toggle-trav');
+            const slider = document.getElementById('toggle-slider');
+            
+            const activeBtn = mode === 'segmentation' ? btnSeg : btnTrav;
+            const inactiveBtn = mode === 'segmentation' ? btnTrav : btnSeg;
+            
+            if (slider) {
+                slider.style.left = `${activeBtn.offsetLeft}px`;
+                slider.style.width = `${activeBtn.offsetWidth}px`;
+            }
+            
+            activeBtn.className = "relative z-10 px-4 py-1.5 rounded-full text-xs font-space font-bold tracking-wider transition-colors duration-300 uppercase text-black";
+            inactiveBtn.className = "relative z-10 px-4 py-1.5 rounded-full text-xs font-space font-bold tracking-wider transition-colors duration-300 uppercase text-zinc-400 hover:text-white";
             
             if (mode === 'segmentation') {
-                btnSeg.className = "px-4 py-1.5 rounded-full text-xs font-space font-bold tracking-wider transition-all duration-200 uppercase bg-[#ff9a26] text-black";
-                btnTrav.className = "px-4 py-1.5 rounded-full text-xs font-space font-bold tracking-wider transition-all duration-200 uppercase text-zinc-400 hover:text-white";
                 if (currentMaskUrl) imgOverlay.src = currentMaskUrl;
             } else {
-                btnTrav.className = "px-4 py-1.5 rounded-full text-xs font-space font-bold tracking-wider transition-all duration-200 uppercase bg-[#ff9a26] text-black";
-                btnSeg.className = "px-4 py-1.5 rounded-full text-xs font-space font-bold tracking-wider transition-all duration-200 uppercase text-zinc-400 hover:text-white";
                 if (currentTravUrl) imgOverlay.src = currentTravUrl;
             }
         }
@@ -525,6 +535,14 @@
             showOnly(stateEmpty);
             updateStatus('STANDBY');
         }
+
+        // Initialize toggle slider position on load & resize
+        window.addEventListener('load', () => {
+            setViewMode(currentViewMode);
+        });
+        window.addEventListener('resize', () => {
+            setViewMode(currentViewMode);
+        });
     </script>
 </body>
 
