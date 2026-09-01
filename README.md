@@ -260,14 +260,14 @@ The segmentation network can confuse visually similar off-road elements (such as
 
 ### Log Refinement
 Fallen trees are often misclassified as sand or grass due to color similarities. ROVER verifies log candidates using a multi-signal confidence equation:
-$$\text{log\_confidence} = 0.50 \times \text{v3\_log\_prob} + 0.20 \times \text{elongation} + 0.15 \times \text{edge\_continuity} + 0.15 \times \text{wood\_color}$$
+$$\text{Log Confidence} = 0.50 \times \text{Log Prob} + 0.20 \times \text{Elongation} + 0.15 \times \text{Edge Continuity} + 0.15 \times \text{Wood Color}$$
 * **V3 Probability Gate**: Candidates are skipped if the peak V3 log probability in the component is $< 0.15$.
 * **Shape & Color**: Evaluates connected components for elongated geometry (aspect ratio $\ge 1.8$), thin profile, and a wood-like color signature ($R > G > B$). This prevents large, brown, sandy road surfaces from being flagged as logs.
 * **Promotion**: Components $\ge 150$ px with confidence $\ge 0.70$ are promoted to **Hard Log**. Lower scores are classified as **Low-Confidence Log**.
 
 ### Rock Refinement
 Loose rocks are verified using solidity and edge density:
-$$\text{rock\_confidence} = 0.50 \times \text{v3\_rock\_prob} + 0.25 \times \text{solidity} + 0.25 \times \text{edge\_density}$$
+$$\text{Rock Confidence} = 0.50 \times \text{Rock Prob} + 0.25 \times \text{Solidity} + 0.25 \times \text{Edge Density}$$
 * Candidates must have a peak Rock probability $\ge 0.15$.
 * Compact, high-density components $\ge 150$ px with confidence $\ge 0.70$ are promoted to **Hard Rock**. Otherwise, they are classified as **Low-Confidence Rock**.
 
