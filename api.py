@@ -1,5 +1,7 @@
 from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+import os
 import time
 import uvicorn
 import torch
@@ -96,6 +98,11 @@ class RoverSegHead(nn.Module):
 # APP INITIALIZATION
 # ============================================================================
 app = FastAPI(title="AuraNav Edge API")
+
+# Mount local static files for 100% offline frontend operation
+if os.path.exists("static"):
+    app.mount("/static", StaticFiles(directory="static"), name="static")
+
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Input resolution: must be divisible by 14 (DINOv2 patch size) and must
